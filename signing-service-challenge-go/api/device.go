@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/fiskaly/coding-challenges/signing-service-challenge/crypto"
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/domain"
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/persistence"
 )
@@ -56,32 +55,16 @@ func (h *DeviceHandler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var signer crypto.Signer
-	var privateKey, publicKey []byte
-	var err error
-
-	switch req.Algorithm {
-	case domain.ECC:
-		signer, privateKey, publicKey, err = crypto.NewECCSigner()
-	case domain.RSA:
-		signer, privateKey, publicKey, err = crypto.NewRSASigner()
-	default:
-		WriteErrorResponse(w, http.StatusBadRequest, []string{"invalid algorithm"})
-		return
-	}
-
+	device, err := h.store.Create(req.ID, req.Algorithm, req.Label)
 	if err != nil {
-		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to create signer"})
-		return
-	}
-
-	device := domain.NewSignatureDevice(req.ID, req.Algorithm, req.Label, signer, privateKey, publicKey)
-	if err := h.store.Create(device); err != nil {
-		if err == domain.ErrDeviceAlreadyExists {
+		switch err {
+		case domain.ErrDeviceAlreadyExists:
 			WriteErrorResponse(w, http.StatusConflict, []string{"device already exists"})
-			return
+		case domain.ErrInvalidAlgorithm:
+			WriteErrorResponse(w, http.StatusBadRequest, []string{"invalid algorithm"})
+		default:
+			WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to create device"})
 		}
-		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to create device"})
 		return
 	}
 

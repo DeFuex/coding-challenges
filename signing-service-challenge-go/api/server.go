@@ -39,63 +39,56 @@ func (server *Server) Run() error {
 	mux := http.NewServeMux()
 
 	// Health endpoint
-	mux.Handle("/api/v1/health", http.HandlerFunc(server.Health))
+	mux.Handle("/api/v0/health", http.HandlerFunc(server.Health))
 
 	// Device endpoints
-	mux.Handle("/api/v1/signature-devices", http.HandlerFunc(server.deviceHandler.CreateDevice))
-	mux.Handle("/api/v1/signature-devices/", http.HandlerFunc(server.deviceHandler.GetDevice))
-	mux.Handle("/api/v1/signature-devices/list", http.HandlerFunc(server.deviceHandler.ListDevices))
-	mux.Handle("/api/v1/signature-devices/sign", http.HandlerFunc(server.deviceHandler.SignTransaction))
+	mux.Handle("/api/v0/signature-devices", http.HandlerFunc(server.deviceHandler.CreateDevice))
+	mux.Handle("/api/v0/signature-devices/", http.HandlerFunc(server.deviceHandler.GetDevice))
+	mux.Handle("/api/v0/signature-devices/list", http.HandlerFunc(server.deviceHandler.ListDevices))
+	mux.Handle("/api/v0/signature-devices/sign", http.HandlerFunc(server.deviceHandler.SignTransaction))
 
 	return http.ListenAndServe(server.listenAddress, mux)
 }
 
-// Health handles the health check endpoint
-func (server *Server) Health(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{"method not allowed"})
-		return
-	}
-
-	WriteAPIResponse(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
 // WriteInternalError writes a default internal error message as an HTTP response.
-func WriteInternalError(responseWriter http.ResponseWriter) {
-	responseWriter.WriteHeader(http.StatusInternalServerError)
-	responseWriter.Write([]byte(http.StatusText(http.StatusInternalServerError)))
+func WriteInternalError(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
 }
 
-// WriteErrorResponse takes an HTTP status code and a slice of errors
-// and writes those as an HTTP error response in a structured format.
-func WriteErrorResponse(responseWriter http.ResponseWriter, statusCode int, errors []string) {
-	responseWriter.WriteHeader(statusCode)
-
-	errorResponse := ErrorResponse{
-		Errors: errors,
-	}
-
-	responseBytes, err := json.Marshal(errorResponse)
-	if err != nil {
-		WriteInternalError(responseWriter)
-	}
-
-	responseWriter.Write(responseBytes)
-}
-
-// WriteAPIResponse takes an HTTP status code and a generic data struct
-// and writes those as an HTTP response in a structured format.
-func WriteAPIResponse(responseWriter http.ResponseWriter, statusCode int, data interface{}) {
-	responseWriter.WriteHeader(statusCode)
+// WriteAPIResponse writes a successful API response.
+func WriteAPIResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 
 	response := Response{
 		Data: data,
 	}
 
-	responseBytes, err := json.MarshalIndent(response, "", "  ")
+	bytes, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		WriteInternalError(responseWriter)
+		WriteInternalError(w)
+		return
 	}
 
-	responseWriter.Write(responseBytes)
+	w.Write(bytes)
+}
+
+// WriteErrorResponse writes an error API response.
+func WriteErrorResponse(w http.ResponseWriter, statusCode int, errors []string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	errorResponse := ErrorResponse{
+		Errors: errors,
+	}
+
+	bytes, err := json.Marshal(errorResponse)
+	if err != nil {
+		WriteInternalError(w)
+		return
+	}
+
+	w.Write(bytes)
 }
