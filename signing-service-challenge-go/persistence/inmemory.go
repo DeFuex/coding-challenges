@@ -1,12 +1,20 @@
 package persistence
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/domain"
 )
 
-// InMemoryStore implements the DeviceStore interface using an in-memory map
+var (
+	// ErrDeviceNotFound is returned when a device with the given ID doesn't exist
+	ErrDeviceNotFound = errors.New("device not found")
+	// ErrDeviceAlreadyExists is returned when trying to create a device with an ID that already exists
+	ErrDeviceAlreadyExists = errors.New("device already exists")
+)
+
+// InMemoryStore is an in-memory implementation of the device storage
 type InMemoryStore struct {
 	devices map[string]*domain.SignatureDevice
 	mu      sync.RWMutex
@@ -19,41 +27,41 @@ func NewInMemoryStore() *InMemoryStore {
 	}
 }
 
-// Create stores a new signature device
-func (store *InMemoryStore) Create(device *domain.SignatureDevice) error {
-	store.mu.Lock()
-	defer store.mu.Unlock()
+// CreateDevice stores a new signature device
+func (s *InMemoryStore) CreateDevice(device *domain.SignatureDevice) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if _, exists := store.devices[device.ID]; exists {
-		return domain.ErrDeviceAlreadyExists
+	if _, exists := s.devices[device.ID]; exists {
+		return ErrDeviceAlreadyExists
 	}
 
-	store.devices[device.ID] = device
+	s.devices[device.ID] = device
 	return nil
 }
 
-// Get retrieves a signature device by ID
-func (store *InMemoryStore) Get(deviceID string) (*domain.SignatureDevice, error) {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+// GetDevice retrieves a signature device by its ID
+func (s *InMemoryStore) GetDevice(id string) (*domain.SignatureDevice, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	device, exists := store.devices[deviceID]
+	device, exists := s.devices[id]
 	if !exists {
-		return nil, domain.ErrDeviceNotFound
+		return nil, ErrDeviceNotFound
 	}
 
 	return device, nil
 }
 
-// List returns all stored signature devices
-func (store *InMemoryStore) List() ([]*domain.SignatureDevice, error) {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
+// ListDevices returns all stored signature devices
+func (s *InMemoryStore) ListDevices() []*domain.SignatureDevice {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	devices := make([]*domain.SignatureDevice, 0, len(store.devices))
-	for _, device := range store.devices {
+	devices := make([]*domain.SignatureDevice, 0, len(s.devices))
+	for _, device := range s.devices {
 		devices = append(devices, device)
 	}
 
-	return devices, nil
+	return devices
 }
