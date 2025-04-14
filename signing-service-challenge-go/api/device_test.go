@@ -9,6 +9,7 @@ import (
 
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/domain"
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/persistence"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateDevice(t *testing.T) {
@@ -436,4 +437,92 @@ func TestMethodNotAllowed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDeleteDevice(t *testing.T) {
+	server := NewServer(":8080")
+
+	// Create a test device first
+	createReq := DeviceRequest{
+		ID:        "test-delete-device",
+		Algorithm: domain.RSA,
+		Label:     "Test Delete Device",
+	}
+	createBody, _ := json.Marshal(createReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/signature-devices", bytes.NewBuffer(createBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.deviceHandler.CreateDevice(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	tests := []struct {
+		name          string
+		deviceID      string
+		method        string
+		expectedCode  int
+		expectedError []string
+	}{
+		{
+			name:         "successful delete",
+			deviceID:     "test-delete-device",
+			method:       http.MethodDelete,
+			expectedCode: http.StatusOK,
+		},
+		{
+			name:          "delete non-existent device",
+			deviceID:      "non-existent-device",
+			method:        http.MethodDelete,
+			expectedCode:  http.StatusNotFound,
+			expectedError: []string{"device not found"},
+		},
+		{
+			name:          "empty device ID",
+			deviceID:      "",
+			method:        http.MethodDelete,
+			expectedCode:  http.StatusBadRequest,
+			expectedError: []string{"device ID is required"},
+		},
+		{
+			name:          "wrong HTTP method",
+			deviceID:      "test-delete-device",
+			method:        http.MethodPost,
+			expectedCode:  http.StatusMethodNotAllowed,
+			expectedError: []string{"method not allowed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "/api/v0/signature-devices/delete"
+			if tt.deviceID != "" {
+				url += "?id=" + tt.deviceID
+			}
+
+			req := httptest.NewRequest(tt.method, url, nil)
+			w := httptest.NewRecorder()
+
+			server.deviceHandler.DeleteDevice(w, req)
+
+			assert.Equal(t, tt.expectedCode, w.Code)
+
+			if tt.expectedError != nil {
+				var errorResp ErrorResponse
+				err := json.NewDecoder(w.Body).Decode(&errorResp)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedError, errorResp.Errors)
+			} else {
+				var resp Response
+				err := json.NewDecoder(w.Body).Decode(&resp)
+				assert.NoError(t, err)
+				message := resp.Data.(map[string]interface{})["message"]
+				assert.Equal(t, "device deleted successfully", message)
+			}
+		})
+	}
+
+	// Verify the device was actually deleted by trying to get it
+	req = httptest.NewRequest(http.MethodGet, "/api/v0/signature-devices/get?id=test-delete-device", nil)
+	w = httptest.NewRecorder()
+	server.deviceHandler.GetDevice(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
