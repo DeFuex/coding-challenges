@@ -30,6 +30,11 @@ type SignTransactionRequest struct {
 	Data string `json:"data"`
 }
 
+// UpdateRequest represents the request body for updating a device
+type UpdateRequest struct {
+	Label string `json:"label"`
+}
+
 // DeviceHandler handles device-related requests
 type DeviceHandler struct {
 	store *persistence.InMemoryStore
@@ -201,4 +206,48 @@ func (h *DeviceHandler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteAPIResponse(w, http.StatusOK, map[string]string{"message": "device deleted successfully"})
+}
+
+// UpdateDevice handles updating a signature device's label
+func (h *DeviceHandler) UpdateDevice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{"method not allowed"})
+		return
+	}
+
+	deviceID := r.URL.Query().Get("id")
+	if deviceID == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, []string{"device ID is required"})
+		return
+	}
+
+	var req UpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, []string{"invalid request body"})
+		return
+	}
+
+	if req.Label == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, []string{"label is required"})
+		return
+	}
+
+	device, err := h.store.Update(deviceID, req.Label)
+	if err != nil {
+		if err == domain.ErrDeviceNotFound {
+			WriteErrorResponse(w, http.StatusNotFound, []string{"device not found"})
+			return
+		}
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to update device"})
+		return
+	}
+
+	WriteAPIResponse(w, http.StatusOK, DeviceResponse{
+		ID:               device.ID,
+		Label:            device.Label,
+		Algorithm:        device.Algorithm,
+		SignatureCounter: device.SignatureCounter,
+		LastSignature:    device.LastSignature,
+		PublicKey:        string(device.PublicKey),
+	})
 }

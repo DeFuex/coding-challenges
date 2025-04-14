@@ -90,3 +90,17 @@ func (s *InMemoryStore) Delete(id string) error {
 	delete(s.devices, id)
 	return nil
 }
+
+// Update updates a signature device's label
+func (s *InMemoryStore) Update(id string, label string) (*domain.SignatureDevice, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	device, exists := s.devices[id]
+	if !exists {
+		return nil, domain.ErrDeviceNotFound
+	}
+
+	device.Label = label
+	return device, nil
+}

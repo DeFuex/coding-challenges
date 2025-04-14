@@ -526,3 +526,117 @@ func TestDeleteDevice(t *testing.T) {
 	server.deviceHandler.GetDevice(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestUpdateDevice(t *testing.T) {
+	server := NewServer(":8080")
+
+	// Create a test device first
+	createReq := DeviceRequest{
+		ID:        "test-update-device",
+		Algorithm: domain.RSA,
+		Label:     "Original Label",
+	}
+	createBody, _ := json.Marshal(createReq)
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/signature-devices", bytes.NewBuffer(createBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.deviceHandler.CreateDevice(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	tests := []struct {
+		name          string
+		deviceID      string
+		method        string
+		updateReq     *UpdateRequest
+		expectedCode  int
+		expectedError []string
+	}{
+		{
+			name:         "successful update",
+			deviceID:     "test-update-device",
+			method:       http.MethodPut,
+			updateReq:    &UpdateRequest{Label: "Updated Label"},
+			expectedCode: http.StatusOK,
+		},
+		{
+			name:          "update non-existent device",
+			deviceID:      "non-existent-device",
+			method:        http.MethodPut,
+			updateReq:     &UpdateRequest{Label: "New Label"},
+			expectedCode:  http.StatusNotFound,
+			expectedError: []string{"device not found"},
+		},
+		{
+			name:          "empty device ID",
+			deviceID:      "",
+			method:        http.MethodPut,
+			updateReq:     &UpdateRequest{Label: "New Label"},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: []string{"device ID is required"},
+		},
+		{
+			name:          "empty label",
+			deviceID:      "test-update-device",
+			method:        http.MethodPut,
+			updateReq:     &UpdateRequest{Label: ""},
+			expectedCode:  http.StatusBadRequest,
+			expectedError: []string{"label is required"},
+		},
+		{
+			name:          "wrong HTTP method",
+			deviceID:      "test-update-device",
+			method:        http.MethodPost,
+			updateReq:     &UpdateRequest{Label: "New Label"},
+			expectedCode:  http.StatusMethodNotAllowed,
+			expectedError: []string{"method not allowed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "/api/v0/signature-devices/update"
+			if tt.deviceID != "" {
+				url += "?id=" + tt.deviceID
+			}
+
+			var body []byte
+			if tt.updateReq != nil {
+				body, _ = json.Marshal(tt.updateReq)
+			}
+
+			req := httptest.NewRequest(tt.method, url, bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			server.deviceHandler.UpdateDevice(w, req)
+
+			assert.Equal(t, tt.expectedCode, w.Code)
+
+			if tt.expectedError != nil {
+				var errorResp ErrorResponse
+				err := json.NewDecoder(w.Body).Decode(&errorResp)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedError, errorResp.Errors)
+			} else {
+				var resp Response
+				err := json.NewDecoder(w.Body).Decode(&resp)
+				assert.NoError(t, err)
+				deviceResp := resp.Data.(map[string]interface{})
+				assert.Equal(t, tt.updateReq.Label, deviceResp["label"])
+				assert.Equal(t, "test-update-device", deviceResp["id"])
+			}
+		})
+	}
+
+	// Verify the device was actually updated by getting it
+	req = httptest.NewRequest(http.MethodGet, "/api/v0/signature-devices/get?id=test-update-device", nil)
+	w = httptest.NewRecorder()
+	server.deviceHandler.GetDevice(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp Response
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	assert.NoError(t, err)
+	deviceResp := resp.Data.(map[string]interface{})
+	assert.Equal(t, "Updated Label", deviceResp["label"])
+}
