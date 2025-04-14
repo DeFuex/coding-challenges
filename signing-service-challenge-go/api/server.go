@@ -46,6 +46,7 @@ func (server *Server) Run() error {
 	mux.Handle("/api/v0/signature-devices/get", http.HandlerFunc(server.deviceHandler.GetDevice))
 	mux.Handle("/api/v0/signature-devices/list", http.HandlerFunc(server.deviceHandler.ListDevices))
 	mux.Handle("/api/v0/signature-devices/sign", http.HandlerFunc(server.deviceHandler.SignTransaction))
+	mux.Handle("/api/v0/signature-devices/delete", http.HandlerFunc(server.deviceHandler.DeleteDevice))
 
 	return http.ListenAndServe(server.listenAddress, mux)
 }

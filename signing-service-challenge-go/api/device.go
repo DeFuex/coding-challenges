@@ -176,3 +176,29 @@ func (h *DeviceHandler) SignTransaction(w http.ResponseWriter, r *http.Request) 
 
 	WriteAPIResponse(w, http.StatusOK, signature)
 }
+
+// DeleteDevice handles the deletion of a signature device
+func (h *DeviceHandler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{"method not allowed"})
+		return
+	}
+
+	deviceID := r.URL.Query().Get("id")
+	if deviceID == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, []string{"device ID is required"})
+		return
+	}
+
+	err := h.store.Delete(deviceID)
+	if err != nil {
+		if err == domain.ErrDeviceNotFound {
+			WriteErrorResponse(w, http.StatusNotFound, []string{"device not found"})
+			return
+		}
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to delete device"})
+		return
+	}
+
+	WriteAPIResponse(w, http.StatusOK, map[string]string{"message": "device deleted successfully"})
+}

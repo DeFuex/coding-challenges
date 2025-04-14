@@ -77,3 +77,16 @@ func (s *InMemoryStore) List() ([]*domain.SignatureDevice, error) {
 
 	return devices, nil
 }
+
+// Delete removes a signature device by ID
+func (s *InMemoryStore) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.devices[id]; !exists {
+		return domain.ErrDeviceNotFound
+	}
+
+	delete(s.devices, id)
+	return nil
+}
