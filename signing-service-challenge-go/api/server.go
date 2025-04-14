@@ -35,57 +35,57 @@ func NewServer(listenAddress string) *Server {
 }
 
 // Run registers all HandlerFuncs for the existing HTTP routes and starts the Server.
-func (s *Server) Run() error {
+func (server *Server) Run() error {
 	mux := http.NewServeMux()
 
 	// Health endpoint
-	mux.Handle("/api/v0/health", http.HandlerFunc(s.Health))
+	mux.Handle("/api/v0/health", http.HandlerFunc(server.Health))
 
 	// Device endpoints
-	mux.Handle("/api/v0/devices", http.HandlerFunc(s.deviceHandler.CreateDevice))
-	mux.Handle("/api/v0/devices/list", http.HandlerFunc(s.deviceHandler.ListDevices))
-	mux.Handle("/api/v0/devices/get", http.HandlerFunc(s.deviceHandler.GetDevice))
-	mux.Handle("/api/v0/devices/sign", http.HandlerFunc(s.deviceHandler.SignTransaction))
+	mux.Handle("/api/v0/devices", http.HandlerFunc(server.deviceHandler.CreateDevice))
+	mux.Handle("/api/v0/devices/list", http.HandlerFunc(server.deviceHandler.ListDevices))
+	mux.Handle("/api/v0/devices/get", http.HandlerFunc(server.deviceHandler.GetDevice))
+	mux.Handle("/api/v0/devices/sign", http.HandlerFunc(server.deviceHandler.SignTransaction))
 
-	return http.ListenAndServe(s.listenAddress, mux)
+	return http.ListenAndServe(server.listenAddress, mux)
 }
 
 // WriteInternalError writes a default internal error message as an HTTP response.
-func WriteInternalError(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusInternalServerError)
-	w.Write([]byte(http.StatusText(http.StatusInternalServerError)))
+func WriteInternalError(responseWriter http.ResponseWriter) {
+	responseWriter.WriteHeader(http.StatusInternalServerError)
+	responseWriter.Write([]byte(http.StatusText(http.StatusInternalServerError)))
 }
 
 // WriteErrorResponse takes an HTTP status code and a slice of errors
 // and writes those as an HTTP error response in a structured format.
-func WriteErrorResponse(w http.ResponseWriter, code int, errors []string) {
-	w.WriteHeader(code)
+func WriteErrorResponse(responseWriter http.ResponseWriter, statusCode int, errors []string) {
+	responseWriter.WriteHeader(statusCode)
 
 	errorResponse := ErrorResponse{
 		Errors: errors,
 	}
 
-	bytes, err := json.Marshal(errorResponse)
+	responseBytes, err := json.Marshal(errorResponse)
 	if err != nil {
-		WriteInternalError(w)
+		WriteInternalError(responseWriter)
 	}
 
-	w.Write(bytes)
+	responseWriter.Write(responseBytes)
 }
 
 // WriteAPIResponse takes an HTTP status code and a generic data struct
 // and writes those as an HTTP response in a structured format.
-func WriteAPIResponse(w http.ResponseWriter, code int, data interface{}) {
-	w.WriteHeader(code)
+func WriteAPIResponse(responseWriter http.ResponseWriter, statusCode int, data interface{}) {
+	responseWriter.WriteHeader(statusCode)
 
 	response := Response{
 		Data: data,
 	}
 
-	bytes, err := json.MarshalIndent(response, "", "  ")
+	responseBytes, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		WriteInternalError(w)
+		WriteInternalError(responseWriter)
 	}
 
-	w.Write(bytes)
+	responseWriter.Write(responseBytes)
 }
