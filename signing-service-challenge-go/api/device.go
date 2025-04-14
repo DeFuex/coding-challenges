@@ -4,15 +4,26 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/fiskaly/coding-challenges/signing-service-challenge/crypto"
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/domain"
 	"github.com/fiskaly/coding-challenges/signing-service-challenge/persistence"
 )
 
-// CreateDeviceRequest represents the request body for creating a new signature device
-type CreateDeviceRequest struct {
+// DeviceRequest represents the request body for creating a device
+type DeviceRequest struct {
 	ID        string                    `json:"id"`
 	Algorithm domain.SignatureAlgorithm `json:"algorithm"`
-	Label     string                    `json:"label,omitempty"`
+	Label     string                    `json:"label"`
+}
+
+// DeviceResponse represents the response body for a device
+type DeviceResponse struct {
+	ID               string                    `json:"id"`
+	Label            string                    `json:"label"`
+	Algorithm        domain.SignatureAlgorithm `json:"algorithm"`
+	SignatureCounter int                       `json:"signature_counter"`
+	LastSignature    string                    `json:"last_signature"`
+	PublicKey        string                    `json:"public_key"`
 }
 
 // SignTransactionRequest represents the request body for signing a transaction
@@ -20,12 +31,12 @@ type SignTransactionRequest struct {
 	Data string `json:"data"`
 }
 
-// DeviceHandler handles HTTP requests for signature devices
+// DeviceHandler handles device-related requests
 type DeviceHandler struct {
 	store *persistence.InMemoryStore
 }
 
-// NewDeviceHandler creates a new device handler
+// NewDeviceHandler creates a new DeviceHandler
 func NewDeviceHandler(store *persistence.InMemoryStore) *DeviceHandler {
 	return &DeviceHandler{
 		store: store,
@@ -39,36 +50,52 @@ func (h *DeviceHandler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req CreateDeviceRequest
+	var req DeviceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteErrorResponse(w, http.StatusBadRequest, []string{"invalid request body"})
 		return
 	}
 
-	// TODO: Generate key pair and create signer based on algorithm
-	// For now, we'll just create a device with empty keys
-	device := domain.NewSignatureDevice(
-		req.ID,
-		req.Algorithm,
-		req.Label,
-		nil, // TODO: Create proper signer
-		nil, // TODO: Add private key
-		nil, // TODO: Add public key
-	)
+	var signer crypto.Signer
+	var privateKey, publicKey []byte
+	var err error
 
-	if err := h.store.CreateDevice(device); err != nil {
-		if err == persistence.ErrDeviceAlreadyExists {
-			WriteErrorResponse(w, http.StatusConflict, []string{"device already exists"})
-			return
-		}
-		WriteInternalError(w)
+	switch req.Algorithm {
+	case domain.ECC:
+		signer, privateKey, publicKey, err = crypto.NewECCSigner()
+	case domain.RSA:
+		signer, privateKey, publicKey, err = crypto.NewRSASigner()
+	default:
+		WriteErrorResponse(w, http.StatusBadRequest, []string{"invalid algorithm"})
 		return
 	}
 
-	WriteAPIResponse(w, http.StatusCreated, device)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to create signer"})
+		return
+	}
+
+	device := domain.NewSignatureDevice(req.ID, req.Algorithm, req.Label, signer, privateKey, publicKey)
+	if err := h.store.Create(device); err != nil {
+		if err == domain.ErrDeviceAlreadyExists {
+			WriteErrorResponse(w, http.StatusConflict, []string{"device already exists"})
+			return
+		}
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to create device"})
+		return
+	}
+
+	WriteAPIResponse(w, http.StatusCreated, DeviceResponse{
+		ID:               device.ID,
+		Label:            device.Label,
+		Algorithm:        device.Algorithm,
+		SignatureCounter: device.SignatureCounter,
+		LastSignature:    device.LastSignature,
+		PublicKey:        string(device.PublicKey),
+	})
 }
 
-// GetDevice handles retrieving a signature device by ID
+// GetDevice handles the retrieval of a signature device
 func (h *DeviceHandler) GetDevice(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{"method not allowed"})
@@ -81,31 +108,55 @@ func (h *DeviceHandler) GetDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := h.store.GetDevice(deviceID)
+	device, err := h.store.Get(deviceID)
 	if err != nil {
-		if err == persistence.ErrDeviceNotFound {
+		if err == domain.ErrDeviceNotFound {
 			WriteErrorResponse(w, http.StatusNotFound, []string{"device not found"})
 			return
 		}
-		WriteInternalError(w)
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to get device"})
 		return
 	}
 
-	WriteAPIResponse(w, http.StatusOK, device)
+	WriteAPIResponse(w, http.StatusOK, DeviceResponse{
+		ID:               device.ID,
+		Label:            device.Label,
+		Algorithm:        device.Algorithm,
+		SignatureCounter: device.SignatureCounter,
+		LastSignature:    device.LastSignature,
+		PublicKey:        string(device.PublicKey),
+	})
 }
 
-// ListDevices handles retrieving all signature devices
+// ListDevices handles the retrieval of all signature devices
 func (h *DeviceHandler) ListDevices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{"method not allowed"})
 		return
 	}
 
-	devices := h.store.ListDevices()
-	WriteAPIResponse(w, http.StatusOK, devices)
+	devices, err := h.store.List()
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to list devices"})
+		return
+	}
+
+	response := make([]DeviceResponse, len(devices))
+	for i, device := range devices {
+		response[i] = DeviceResponse{
+			ID:               device.ID,
+			Label:            device.Label,
+			Algorithm:        device.Algorithm,
+			SignatureCounter: device.SignatureCounter,
+			LastSignature:    device.LastSignature,
+			PublicKey:        string(device.PublicKey),
+		}
+	}
+
+	WriteAPIResponse(w, http.StatusOK, response)
 }
 
-// SignTransaction handles signing a transaction with a signature device
+// SignTransaction handles the signing of transaction data
 func (h *DeviceHandler) SignTransaction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		WriteErrorResponse(w, http.StatusMethodNotAllowed, []string{"method not allowed"})
@@ -124,13 +175,13 @@ func (h *DeviceHandler) SignTransaction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	device, err := h.store.GetDevice(deviceID)
+	device, err := h.store.Get(deviceID)
 	if err != nil {
-		if err == persistence.ErrDeviceNotFound {
+		if err == domain.ErrDeviceNotFound {
 			WriteErrorResponse(w, http.StatusNotFound, []string{"device not found"})
 			return
 		}
-		WriteInternalError(w)
+		WriteErrorResponse(w, http.StatusInternalServerError, []string{"failed to get device"})
 		return
 	}
 
