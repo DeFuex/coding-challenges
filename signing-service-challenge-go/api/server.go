@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/fiskaly/coding-challenges/signing-service-challenge/persistence"
 )
 
 // Response is the generic API response container.
@@ -18,13 +20,17 @@ type ErrorResponse struct {
 // Server manages HTTP requests and dispatches them to the appropriate services.
 type Server struct {
 	listenAddress string
+	deviceHandler *DeviceHandler
 }
 
 // NewServer is a factory to instantiate a new Server.
 func NewServer(listenAddress string) *Server {
+	store := persistence.NewInMemoryStore()
+	deviceHandler := NewDeviceHandler(store)
+
 	return &Server{
 		listenAddress: listenAddress,
-		// TODO: add services / further dependencies here ...
+		deviceHandler: deviceHandler,
 	}
 }
 
@@ -32,9 +38,14 @@ func NewServer(listenAddress string) *Server {
 func (s *Server) Run() error {
 	mux := http.NewServeMux()
 
+	// Health endpoint
 	mux.Handle("/api/v0/health", http.HandlerFunc(s.Health))
 
-	// TODO: register further HandlerFuncs here ...
+	// Device endpoints
+	mux.Handle("/api/v0/devices", http.HandlerFunc(s.deviceHandler.CreateDevice))
+	mux.Handle("/api/v0/devices/list", http.HandlerFunc(s.deviceHandler.ListDevices))
+	mux.Handle("/api/v0/devices/get", http.HandlerFunc(s.deviceHandler.GetDevice))
+	mux.Handle("/api/v0/devices/sign", http.HandlerFunc(s.deviceHandler.SignTransaction))
 
 	return http.ListenAndServe(s.listenAddress, mux)
 }
