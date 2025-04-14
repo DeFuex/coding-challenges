@@ -43,7 +43,7 @@ func (server *Server) Run() error {
 
 	// Device endpoints
 	mux.Handle("/api/v0/signature-devices", http.HandlerFunc(server.deviceHandler.CreateDevice))
-	mux.Handle("/api/v0/signature-devices/", http.HandlerFunc(server.deviceHandler.GetDevice))
+	mux.Handle("/api/v0/signature-devices/get", http.HandlerFunc(server.deviceHandler.GetDevice))
 	mux.Handle("/api/v0/signature-devices/list", http.HandlerFunc(server.deviceHandler.ListDevices))
 	mux.Handle("/api/v0/signature-devices/sign", http.HandlerFunc(server.deviceHandler.SignTransaction))
 

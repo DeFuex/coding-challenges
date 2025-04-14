@@ -165,7 +165,7 @@ func TestGetDevice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/api/v0/signature-devices?id="+tt.deviceID, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/v0/signature-devices/get?id="+tt.deviceID, nil)
 			rec := httptest.NewRecorder()
 
 			handler.GetDevice(rec, req)
